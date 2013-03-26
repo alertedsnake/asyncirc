@@ -95,7 +95,7 @@ class IRCClient(object):
 
         (tags, prefix, command, args) = parser.parse(line)
 
-        command = events.numeric.get(command, command)
+        command = events.numeric.get(command, command).lower()
         if not command:
             return
 
@@ -111,15 +111,15 @@ class IRCClient(object):
         else:
 
             response = None
-            handler = getattr(self, 'on_%s' % command.lower(), None)
+            handler = getattr(self, 'on_%s' % command, None)
             if handler:
                 response = handler(prefix, args)
 
                 if response:
                     self._send(response)
 
-            else:
-                print('?? p: {0} c:{1} a: {2}'.format(prefix, command, args))
+#            else:
+#                print('?? p: {0} c:{1} a: {2}'.format(prefix, command, args))
 
 
     def _send(self, msg):
@@ -162,6 +162,7 @@ class IRCClient(object):
 
         # strip out the CTCP stuff
         line = args[1].strip('\x01')
+
         command = ''
         msg = ''
         if ' ' in line:
@@ -176,35 +177,23 @@ class IRCClient(object):
             handler(prefix, args)
 
 
-
-
     ### Default IRC Handlers ###
-    def on_connect(self, *args):
-        print("*** connected to {0}:{1}".format(self.host, self.port))
-
-    def on_error(self, prefix, params):
-        print("*** Error: {0}".format(' '.join(params)))
-
-    def on_notice(self, prefix, params):
-        print("*** NOTICE: {0}".format(' '.join(params)))
-
-
     def on_ctcp_ping(self, prefix, args):
         nick = prefix_nick(prefix)
-        print('*** CTCP PING request from {0}'.format(nick))
         self.ctcp_reply(nick, 'PING', args[1])
 
     def on_ctcp_version(self, prefix, args):
         nick = prefix_nick(prefix)
-        print('*** CTCP Version request from {0}'.format(nick))
         self.ctcp_reply(nick, 'VERSION', 'AsyncIRC {0}'.format(__version__))
 
 
     # you probably will overload these
-    def on_disconnect(self):                    pass
-    def on_privmsg(self, prefix, args):         pass
     def on_ctcp_action(self, prefix, args):     pass
-    def on_ctcp_version(self, prefix, args):    pass
+    def on_connect(self, *args):                pass
+    def on_disconnect(self):                    pass
+    def on_error(self, prefix, params):         pass
+    def on_notice(self, prefix, params):        pass
+    def on_privmsg(self, prefix, args):         pass
 
 
 
@@ -212,17 +201,28 @@ class IRCClient(object):
     def action(self, target, action):
         self.ctcp('ACTION', target, action)
 
+    def admin(self, server=''):
+        self._send(' '.join(['ADMIN', server]).strip())
+
     def ctcp(self, target, ctcptype, param=''):
         ctcptype = ctcptype.upper()
         self.privmsg(target, '\001{0}{1}\001'.format(ctcptype, param and (' ' + param) or ''))
 
     def ctcp_reply(self, target, ctcptype, param=''):
-        #self.notice(target, '\001{0}\001'.format(param))
         ctcptype = ctcptype.upper()
         self.notice(target, '\001{0}{1}\001'.format(ctcptype, param and (' ' + param) or ''))
 
+    def info(self, server=''):
+        self._send(' '.join(['INFO', server]).strip())
+
+    def invite(self, nick, channel):
+        self._send(' '.join(['INVITE', nick, channel]).strip())
+
     def join(self, channel, key=''):
         self._send('JOIN {0}{1}'.format(channel, (key and (' ' + key))))
+
+    def kick(self, channel, nick, comment=''):
+        self._send('KICK {0} {1}{2}'.format(channel, nick, (comment and (' :'+comment))))
 
     def mode(self, target, cmd):
         self._send('MODE {0} {1}'.format(target, cmd))
@@ -235,15 +235,26 @@ class IRCClient(object):
         self._send('NICK ' + newnick)
 
     def notice(self, target, text):
+        # TODO: limit text length
         self._send('NOTICE {0} :{1}'.format(target, text))
+
+    def oper(self, nick, password):
+        self._send('OPER {0} {1}'.format(nick, password))
+
+    def part(self, channels, message=''):
+        cmd = ['PART', ','.join(channels)]
+        if message:
+            cmd.append(message)
+
+        self._send(' '.join(cmd))
 
     def passwd(self, password):
         self._send('PASS ' + password)
 
-    def ping(self, target, t2=''):
+    def ping(self, target, target2=''):
         self._send('PING {0}{1}'.format(target, target2 and (' ' + target2)))
 
-    def pong(self, target, t2=''):
+    def pong(self, target, target2=''):
         self._send('PONG {0}{1}'.format(target, target2 and (' ' + target2)))
 
     def privmsg(self, target, text):
@@ -251,6 +262,15 @@ class IRCClient(object):
 
     def quit(self, message=''):
         self._send('QUIT' + (message and (' :' + message)))
+
+    def time(self, server=''):
+        self._send('TIME' + (server and (' ' + server)))
+
+    def topic(self, channel, topic=None):
+        if topic:
+            self._send('TOPIC {0} :{1}'.format(channel, topic))
+        else:
+            self._send('TOPIC ' + channel)
 
     def user(self, username, realname):
         self._send('USER {0} 0 * :{1}'.format(username, realname))
@@ -260,5 +280,11 @@ class IRCClient(object):
 
     def version(self, server=""):
         self._send('VERSION' + (server and (' ' + server)))
+
+    def who(self, target='', op=''):
+        self._send('WHO{0}{1}'.format(target and (' ' + target), op and (' o')))
+
+    def whois(self, targets):
+        self._send('WHOIS ' + ','.join(targets))
 
 
