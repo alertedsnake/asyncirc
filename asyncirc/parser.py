@@ -7,7 +7,7 @@ def parse(input):
     ({u'@foo': u'bar'}, u':lol!lol@example.com', u'PRIVMSG', [u'#lol', u':lol'])
     """
     if isinstance(input, bytes):
-        input = input.decode('UTF-8', 'ignore')
+        input = input.decode('UTF-8', 'replace')
 
     string = input.split(' ')
 
