@@ -17,6 +17,13 @@ class Client(IRCClient):
             print('*** {0} has joined channel {1}'.format(nick, target))
 
 
+    def on_part(self, prefix, args):
+        nick = prefix_nick(prefix)
+        target = args[0]
+
+        print('*** {0} has left channel {1}'.format(nick, target))
+
+
     def on_kick(self, prefix, args):
         nick = prefix_nick(prefix)
         target, who, msg = args

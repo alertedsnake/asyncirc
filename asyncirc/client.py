@@ -1,20 +1,24 @@
 __author__ = 'Michael Stella <asyncirc@thismetalsky.org>'
 __version__ = '0.1'
 
-__all__ = ['IRCClient']
+__all__ = ['IRCClient', 'prefix_nick']
 
-import re, sys
+import sys
 import tulip
 
 from . import buffer
 from . import events
+from . import parser
 
 class IRCError(Exception): pass
 class InvalidCharacters(ValueError): pass
 class MessageTooLong(ValueError): pass
 class NotConnected(IRCError): pass
 
-rfc_1459_command_regexp = re.compile("^(:(?P<prefix>[^ ]+) +)?(?P<command>[^ ]+)( *(?P<argument> .+))?")
+#monkey!~monkey@66.9.128.66
+def prefix_nick(prefix):
+    return prefix.split('!')[0]
+
 
 class IRCClient(object):
     """IRC Client object"""
@@ -89,33 +93,15 @@ class IRCClient(object):
     def _handle_line(self, line):
         """Handle an incoming IRC message"""
 
-        prefix=None
-        command=None
-        args=None
-
-        m = rfc_1459_command_regexp.match(line)
-        if m.group('prefix'):
-            prefix=m.group('prefix')
-            if not self.real_server_name:
-                self.real_server_name = prefix
-
-        if m.group('command'):
-            command = m.group('command').lower()
-
-        if m.group('argument'):
-            a = m.group('argument').split(' :', 1)
-            args = a[0].split()
-            if len(a) == 2:
-                args.append(a[1])
-
+        (tags, prefix, command, args) = parser.parse(line)
 
         command = events.numeric.get(command, command)
         if not command:
             return
 
-        # record the nickname
+        # record the nickname in case the server changed it
         if command == 'welcome':
-            self.real_nickname = args[0]
+            self.nickname = args[0]
 
         # handle privmsg/notice special to split out the CTCP stuff
         if command in ('privmsg', 'notice'):
@@ -152,6 +138,7 @@ class IRCClient(object):
         msg = msg + '\r\n'
         self.transport.write(msg.encode())
 
+
     ### Special IRC Handlers ###
     def _on_message(self, command, prefix, args):
         """Handle private messages by stripping out the CTCP stuff first
@@ -161,16 +148,6 @@ class IRCClient(object):
 
         # ahh, CTCP here, we'll strip it
         if '\x01' in args[1]:
-            line = args[1].strip('\x01')
-            command = ''
-            msg = ''
-            if ' ' in line:
-                command, msg = line.split(' ', 1)
-            else:
-                command = line
-
-            args[1] = msg
-
             self._on_ctcp(command, prefix, args)
 
         # normal messages
@@ -182,6 +159,17 @@ class IRCClient(object):
 
     def _on_ctcp(self, command, prefix, args):
         """Handle common CTCP messages"""
+
+        # strip out the CTCP stuff
+        line = args[1].strip('\x01')
+        command = ''
+        msg = ''
+        if ' ' in line:
+            command, msg = line.split(' ', 1)
+        else:
+            command = line
+
+        args[1] = msg
 
         handler = getattr(self, 'on_ctcp_%s' % command.lower(), None)
         if handler:
@@ -272,3 +260,5 @@ class IRCClient(object):
 
     def version(self, server=""):
         self._send('VERSION' + (server and (' ' + server)))
+
+
