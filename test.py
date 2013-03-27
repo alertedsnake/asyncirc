@@ -87,4 +87,9 @@ class Client(IRCClient):
 
 if __name__ == '__main__':
     conn = Client(sys.argv[1], int(sys.argv[2]))
-    conn.run()
+    try:
+        conn.run()
+    except KeyboardInterrupt:
+        conn.disconnect("Caught SIGINT")
+        sys.exit(0)
+

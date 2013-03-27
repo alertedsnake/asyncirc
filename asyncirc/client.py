@@ -3,7 +3,7 @@ __version__ = '0.1'
 
 __all__ = ['IRCClient', 'prefix_nick']
 
-import sys
+import logging, sys, time
 import tulip
 
 from . import buffer
@@ -19,6 +19,7 @@ class NotConnected(IRCError): pass
 def prefix_nick(prefix):
     return prefix.split('!')[0]
 
+log = logging.getLogger(__name__)
 
 class IRCClient(object):
     """IRC Client object"""
@@ -27,29 +28,53 @@ class IRCClient(object):
                  nickname='monkey', username=None, ircname=None):
         assert isinstance(port, int)
 
+        # connection
         self.host = host
         self.port = port
         self.ssl = ssl
 
+        # names
         self.nickname = nickname
         self.username = username or nickname
         self.ircname  = ircname or nickname
-
         self.real_server_name = None
 
+        # the incoming data buffer
         self.buffer = buffer.LineBuffer()
 
+        # our event loop
         self.loop = tulip.get_event_loop()
+
+        # status info
+        self.connected = False
+        self.reconnect = True
+        self.reconnect_count = 1
+
+
+    def _connect(self):
+        """Create a connection"""
+        tulip.Task(self.loop.create_connection(lambda: self, self.host, self.port, ssl=self.ssl))
+
+    def _reconnect(self):
+        """Reconnect to the server, with an increasing delay time"""
+        rctime = 5 * self.reconnect_count
+        log.info('*** reconnecting in {0} seconds'.format(rctime))
+        time.sleep(rctime)
+        self.reconnect_count += 1
+        self._connect()
 
 
     def run(self):
-        tulip.Task(self.loop.create_connection(lambda: self, self.host, self.port, ssl=self.ssl))
+        """Start the loop"""
+        self._connect()
         self.loop.run_forever()
 
 
     def disconnect(self, message=''):
-        self.connected = False
+        """Disconnect and quit"""
         self.quit(message)
+        self.connected = False
+        self.on_disconnect()
         self.loop.stop()
 
 
@@ -57,6 +82,7 @@ class IRCClient(object):
 
     def connection_made(self, transport):
         self.transport = transport
+        self.connected = True
         self.on_connect()
 
         # logon to IRC
@@ -64,31 +90,40 @@ class IRCClient(object):
         self.user(self.username, self.ircname)
 
 
-
     def connection_refused(self, exc):
-        print('*** connection refused: {0}'.format(exc))
+        log.error('*** connection refused: {0}'.format(exc))
 
 
     def connection_lost(self, exc):
-        print('*** connection lost: {0}'.format(exc))
+        log.error('*** connection lost: {0}'.format(exc))
+        self.connected = False
         self.on_disconnect()
-        self.loop.stop()
+        if self.reconnect:
+            self._reconnect()
+        else:
+            self.loop.stop()
 
+
+    def eof_received(self):
+        log.info('*** connection closed')
+        self.connected = False
+        self.on_disconnect()
+        if self.reconnect:
+            self._reconnect()
+        else:
+            self.loop.stop()
+
+
+    ### Process IRC messages ###
 
     def data_received(self, data):
+        """Process messages from the server"""
         self.buffer.feed(data.decode())
         for line in self.buffer:
             if not line:
                 continue
             self._handle_line(line)
 
-
-    def eof_received(self):
-        print('*** connection closed')
-        self.on_disconnect()
-        self.loop.stop()
-
-    ### Process IRC messages ###
 
     def _handle_line(self, line):
         """Handle an incoming IRC message"""
@@ -99,13 +134,23 @@ class IRCClient(object):
         if not command:
             return
 
-        # record the nickname in case the server changed it
+        log.debug('<- p: {0} c: {1} a: {2}'.format(prefix, command, args))
+
         if command == 'welcome':
+            # record the nickname in case the server changed it
             self.nickname = args[0]
+
+            # reset the reconnect count
+            self.reconnect_count = 1
+
 
         # handle privmsg/notice special to split out the CTCP stuff
         if command in ('privmsg', 'notice'):
             self._on_message(command, prefix, args)
+
+        # handle server pings internally
+        elif command == 'ping':
+            self.pong(args[0])
 
         # otherwise, find a handler, and call it
         else:
@@ -119,7 +164,7 @@ class IRCClient(object):
                     self._send(response)
 
 #            else:
-#                print('?? p: {0} c:{1} a: {2}'.format(prefix, command, args))
+#                log.debug('<- p: {0} c:{1} a: {2}'.format(prefix, command, args))
 
 
     def _send(self, msg):
@@ -134,14 +179,14 @@ class IRCClient(object):
         if not self.transport:
             raise NotConnected()
 
-        print("D** {0}".format(msg))
+        log.debug("D-> {0}".format(msg))
         msg = msg + '\r\n'
         self.transport.write(msg.encode())
 
 
     ### Special IRC Handlers ###
     def _on_message(self, command, prefix, args):
-        """Handle private messages by stripping out the CTCP stuff first
+        """Handle messages by stripping out the CTCP stuff first
             msg: ['#test', 'yo']
             action: ['#test', '\x01ACTION yawns\x01']
         """
@@ -163,14 +208,11 @@ class IRCClient(object):
         # strip out the CTCP stuff
         line = args[1].strip('\x01')
 
-        command = ''
-        msg = ''
         if ' ' in line:
-            command, msg = line.split(' ', 1)
+            command, args[1] = line.split(' ', 1)
         else:
             command = line
-
-        args[1] = msg
+            args[1] = ''
 
         handler = getattr(self, 'on_ctcp_%s' % command.lower(), None)
         if handler:
