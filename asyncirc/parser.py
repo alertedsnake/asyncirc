@@ -1,16 +1,23 @@
-__author__ = 'Kiyoshi Aman'
+"""
+Aerdan's IRC message parser.
+parse_prefix() added by me.
+"""
+__author__ = 'Kiyoshi Aman, Michael Stella'
 
 def parse(input):
     """Parse an IRC message.
 
     >>> parse('@foo=bar :lol!lol@example.com PRIVMSG #lol :lol')
-    ({u'@foo': u'bar'}, u':lol!lol@example.com', u'PRIVMSG', [u'#lol', u':lol'])
+    ({'@foo': 'bar'}, ':lol!lol@example.com', 'PRIVMSG', ['#lol', ':lol'])
+
+    ({'@foo': 'bar'}, {'nick': 'lol', 'user': 'lol', host: 'example.com'}, 'PRIVMSG', ['#lol', ':lol'])
     """
     if isinstance(input, bytes):
         input = input.decode('UTF-8', 'replace')
 
     string = input.split(' ')
 
+    # handle tags
     if string[0].startswith('@'):
         tag_str = string[0][1:]
         string = string[1:]
@@ -24,12 +31,14 @@ def parse(input):
     else:
         tags = {}
 
+    # handle prefix
     if string[0].startswith(':'):
-        prefix = string[0][1:]
+        prefix = parse_prefix(string[0][1:])
         string = string[1:]
     else:
-        prefix = ''
+        prefix = {}
 
+    # handle verb and arguments
     verb = string[0]
     args = string[1:]
 
@@ -45,3 +54,28 @@ def parse(input):
             break
 
     return (tags, prefix, verb, args)
+
+
+def parse_prefix(prefix):
+    """Split up the prefix into parts"""
+
+    # server messages won't have user info
+    if '!' not in prefix:
+        return {'server': prefix, 'prefix': prefix}
+
+
+    nick, userhost = prefix.split('!')
+    user, host = userhost.split('@')
+
+    return {
+        'prefix':   prefix,
+        'nick':     nick,
+        'host':     host,
+        'user':     user,
+        'userhost': userhost,
+    }
+
+
+if __name__ == '__main__':
+    for i in range(10000):
+        parse('@foo=bar :lol!lol@example.com PRIVMSG #lol :lol')

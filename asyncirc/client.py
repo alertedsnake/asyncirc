@@ -1,9 +1,9 @@
 __author__ = 'Michael Stella <asyncirc@thismetalsky.org>'
-__version__ = '0.1'
+__version__ = 'tulip-0.1'
 
-__all__ = ['IRCClient', 'prefix_nick']
+__all__ = ['IRCClient']
 
-import logging, sys, time
+import datetime, logging, sys, time
 import tulip
 
 from . import buffer
@@ -14,10 +14,6 @@ class IRCError(Exception): pass
 class InvalidCharacters(ValueError): pass
 class MessageTooLong(ValueError): pass
 class NotConnected(IRCError): pass
-
-#monkey!~monkey@66.9.128.66
-def prefix_nick(prefix):
-    return prefix.split('!')[0]
 
 log = logging.getLogger(__name__)
 
@@ -136,6 +132,8 @@ class IRCClient(object):
 
         log.debug('<- p: {0} c: {1} a: {2}'.format(prefix, command, args))
 
+#        prefix = self._parse_prefix(prefix)
+
         if command == 'welcome':
             # record the nickname in case the server changed it
             self.nickname = args[0]
@@ -173,15 +171,24 @@ class IRCClient(object):
         if '\n' in msg:
             raise InvalidCharacters()
 
-        if len(msg) > 510:
-            raise MessageTooLong()
-
-        if not self.transport:
+        # TODO test this
+        if not self.connected or not self.transport:
             raise NotConnected()
 
         log.debug("D-> {0}".format(msg))
-        msg = msg + '\r\n'
-        self.transport.write(msg.encode())
+
+        # encode into bytes
+        msg = msg.encode() + b'\r\n'
+
+        # truncate if too long, but make sure we keep
+        # the CRLF at the end
+        if len(msg) > 512:
+            log.debug("Message too long, truncating")
+            msg = msg[0:510] + b'\r\n'
+
+        # Add message to the write queue.  This won't necessarily write
+        # right away, so it won't throw an exception
+        self.transport.write(msg)
 
 
     ### Special IRC Handlers ###
@@ -217,6 +224,7 @@ class IRCClient(object):
         handler = getattr(self, 'on_ctcp_%s' % command.lower(), None)
         if handler:
             handler(prefix, args)
+
 
 
     ### Default IRC Handlers ###
@@ -303,6 +311,7 @@ class IRCClient(object):
         self._send('PRIVMSG {0} :{1}'.format(target, text))
 
     def quit(self, message=''):
+        self.reconnect = False
         self._send('QUIT' + (message and (' :' + message)))
 
     def time(self, server=''):
@@ -328,5 +337,30 @@ class IRCClient(object):
 
     def whois(self, targets):
         self._send('WHOIS ' + ','.join(targets))
+
+
+    ### Delayed IRC actions ###
+    # NOTE: these do NOT handle timezones, this is all in localtime!
+    def privmsg_delayed(self, delay, target, text):
+        """Send a PRIVMSG after a delay (in seconds)"""
+        self.loop.call_later(delay, self.privmsg, target, text)
+
+    def action_delayed(self, delay, target, action):
+        """Send a CTCP ACTION after a delay (in seconds)"""
+        self.loop.call_later(delay, self.action, target, action)
+
+    def privmsg_at(self, at, target, text):
+        """Send a PRIVMSG at a time (int seconds or datetime.datetime)"""
+        if isinstance(at, int):
+            at = datetime.datetime.fromtimestamp(at)
+        delay = at - datetime.datetime.now()
+        self.loop.call_later(delay.total_seconds(), self.privmsg, target, text)
+
+    def action_at(self, at, target, text):
+        """Send a CTCP ACTION at a time (int seconds or datetime.datetime)"""
+        if isinstance(at, int):
+            at = datetime.datetime.fromtimestamp(at)
+        delay = at - datetime.datetime.now()
+        self.loop.call_later(delay.total_seconds(), self.action, target, text)
 
 
