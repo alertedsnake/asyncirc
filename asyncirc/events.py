@@ -1,3 +1,6 @@
+"""IRC Events and numeric->name conversions"""
+
+from . import protocol
 
 numeric = {
     "001": "welcome",
@@ -162,3 +165,46 @@ numeric = {
     "501": "umodeunknownflag",
     "502": "usersdontmatch",
 }
+
+
+class Event:
+    """Standard IRC Event"""
+
+    def __init__(self, prefix, command, args=[], tags={}):
+        self.prefix     = prefix
+        self.command    = command
+        self.args       = args
+        self.tags       = tags
+        self.message    = ''
+
+        # split up prefix
+        self.source, self.user, self.host = protocol.parse_prefix(prefix)
+
+        if len(args) > 0:
+            if command not in protocol.commands_without_target:
+                self.target = args.pop(0)
+            else:
+                self.target = None
+
+        else:
+            self.target = None
+
+
+    @property
+    def hostmask(self):
+        return '@'.join((self.user, self.host))
+
+
+class MessageEvent(Event):
+    """Message Event is a standard event with a message"""
+
+    def __init__(self, prefix, command, args=[], tags={}):
+        super().__init__(prefix, command, args, tags)
+
+        self.message = args[-1].strip()
+
+
+class CTCPEvent(Event):
+    """CTCP-specific event"""
+    pass
+

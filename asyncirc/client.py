@@ -1,21 +1,23 @@
+"""IRC Client library using Asynchronous I/O via the py3k 'tulip' library"""
+
 __author__ = 'Michael Stella <asyncirc@thismetalsky.org>'
 __version__ = 'tulip-0.1'
 
-__all__ = ['IRCClient']
+__all__ = ['IRCClient', 'IRCError', 'NotConnected']
 
 import datetime, logging, sys, time
 import tulip
 
 from . import buffer
 from . import events
-from . import parser
+from . import protocol
 
 class IRCError(Exception): pass
 class InvalidCharacters(ValueError): pass
-class MessageTooLong(ValueError): pass
 class NotConnected(IRCError): pass
 
 log = logging.getLogger(__name__)
+#log.setLevel(logging.DEBUG)
 
 class IRCClient:
     """IRC Client object"""
@@ -66,12 +68,12 @@ class IRCClient:
         self.loop.run_forever()
 
 
-    def disconnect(self, message=''):
-        """Disconnect and quit"""
-        self.quit(message)
-        self.connected = False
-        self.on_disconnect()
-        self.loop.stop()
+#    def disconnect(self, message=''):
+#        """Disconnect and quit"""
+#        self.quit(message)
+#        self.connected = False
+#        self.on_disconnect()
+#        self.loop.stop()
 
 
     ### Tulip responses ###
@@ -124,15 +126,14 @@ class IRCClient:
     def _handle_line(self, line):
         """Handle an incoming IRC message"""
 
-        (tags, prefix, command, args) = parser.parse(line)
+        (tags, prefix, command, args) = protocol.parse(line)
 
+        # translate numerics
         command = events.numeric.get(command, command).lower()
         if not command:
             return
 
         log.debug('<- p: {0} c: {1} a: {2}'.format(prefix, command, args))
-
-#        prefix = self._parse_prefix(prefix)
 
         if command == 'welcome':
             # record the nickname in case the server changed it
@@ -144,7 +145,7 @@ class IRCClient:
 
         # handle privmsg/notice special to split out the CTCP stuff
         if command in ('privmsg', 'notice'):
-            self._on_message(command, prefix, args)
+            self._on_message(prefix, command, args, tags)
 
         # handle server pings internally
         elif command == 'ping':
@@ -156,7 +157,9 @@ class IRCClient:
             response = None
             handler = getattr(self, 'on_%s' % command, None)
             if handler:
-                response = handler(prefix, args)
+
+                event = events.Event(prefix, command, args, tags)
+                response = handler(event)
 
                 if response:
                     self._send(response)
@@ -175,7 +178,7 @@ class IRCClient:
         if not self.connected or not self.transport:
             raise NotConnected()
 
-        log.debug("D-> {0}".format(msg))
+        log.debug("-> {0}".format(msg))
 
         # encode into bytes
         msg = msg.encode() + b'\r\n'
@@ -192,7 +195,7 @@ class IRCClient:
 
 
     ### Special IRC Handlers ###
-    def _on_message(self, command, prefix, args):
+    def _on_message(self, prefix, command, args, tags):
         """Handle messages by stripping out the CTCP stuff first
             msg: ['#test', 'yo']
             action: ['#test', '\x01ACTION yawns\x01']
@@ -200,16 +203,17 @@ class IRCClient:
 
         # ahh, CTCP here, we'll strip it
         if '\x01' in args[1]:
-            self._on_ctcp(command, prefix, args)
+            self._on_ctcp(prefix, command, args, tags)
 
         # normal messages
         else:
             handler = getattr(self, 'on_%s' % command.lower(), None)
             if handler:
-                handler(prefix, args)
+                event = events.MessageEvent(prefix, command, args, tags)
+                handler(event)
 
 
-    def _on_ctcp(self, command, prefix, args):
+    def _on_ctcp(self, prefix, command, args, tags):
         """Handle common CTCP messages"""
 
         # strip out the CTCP stuff
@@ -223,18 +227,17 @@ class IRCClient:
 
         handler = getattr(self, 'on_ctcp_%s' % command.lower(), None)
         if handler:
-            handler(prefix, args)
+            event = events.CTCPEvent(prefix, command, args, tags)
+            handler(event)
 
 
 
     ### Default IRC Handlers ###
-    def on_ctcp_ping(self, prefix, args):
-        nick = prefix_nick(prefix)
-        self.ctcp_reply(nick, 'PING', args[1])
+    def on_ctcp_ping(self, event):
+        self.ctcp_reply(event.source, 'PING', event.args[0])
 
-    def on_ctcp_version(self, prefix, args):
-        nick = prefix_nick(prefix)
-        self.ctcp_reply(nick, 'VERSION', 'AsyncIRC {0}'.format(__version__))
+    def on_ctcp_version(self, event):
+        self.ctcp_reply(event.source, 'VERSION', 'AsyncIRC {0}'.format(__version__))
 
 
     # you probably will overload these

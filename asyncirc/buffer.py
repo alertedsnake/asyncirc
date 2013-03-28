@@ -1,3 +1,5 @@
+"""A simple buffer that splits into lines"""
+
 __all__ = ['LineBuffer']
 
 import re
