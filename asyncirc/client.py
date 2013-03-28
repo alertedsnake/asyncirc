@@ -17,7 +17,7 @@ class NotConnected(IRCError): pass
 
 log = logging.getLogger(__name__)
 
-class IRCClient(object):
+class IRCClient:
     """IRC Client object"""
 
     def __init__(self, host, port=6667, ssl=False,
@@ -362,5 +362,4 @@ class IRCClient(object):
             at = datetime.datetime.fromtimestamp(at)
         delay = at - datetime.datetime.now()
         self.loop.call_later(delay.total_seconds(), self.action, target, text)
-
 
