@@ -64,7 +64,7 @@ def parse_prefix(prefix):
     if not prefix or '!' not in prefix:
         return (None, None, None)
 
-    nick, userhost = prefix.split('!')
+    nick, userhost = prefix.lstrip('~').split('!')
     user, host = userhost.split('@')
 
     return (nick, user, host)
