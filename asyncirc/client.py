@@ -24,7 +24,8 @@ class IRCClient:
 
     def __init__(self, host, port=6667, ssl=False,
                  nickname='monkey', username=None, ircname=None):
-        assert isinstance(port, int)
+        if not isinstance(port, int):
+            raise ValueError("port must be an integer")
 
         # connection
         self.host = host
