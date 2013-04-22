@@ -119,9 +119,8 @@ class IRCClient:
         """Process messages from the server"""
         self.buffer.feed(data.decode())
         for line in self.buffer:
-            if not line:
-                continue
-            self._handle_line(line)
+            if line:
+                self._handle_line(line)
 
 
     def _handle_line(self, line):
@@ -158,12 +157,14 @@ class IRCClient:
             response = None
             handler = getattr(self, 'on_%s' % command, None)
             if handler:
-
                 event = events.Event(prefix, command, args, tags)
-                response = handler(event)
 
-                if response:
-                    self._send(response)
+                def delegate(event):
+                    response = handler(event)
+                    if response:
+                        self._send(response)
+
+                self.loop.call_soon(delegate, event)
 
 #            else:
 #                log.debug('<- p: {0} c:{1} a: {2}'.format(prefix, command, args))
@@ -211,7 +212,11 @@ class IRCClient:
             handler = getattr(self, 'on_%s' % command.lower(), None)
             if handler:
                 event = events.MessageEvent(prefix, command, args, tags)
-                handler(event)
+
+                def delegate(event):
+                    handler(event)
+
+                self.loop.call_soon(delegate, event)
 
 
     def _on_ctcp(self, prefix, command, args, tags):
@@ -229,7 +234,11 @@ class IRCClient:
         handler = getattr(self, 'on_ctcp_%s' % command.lower(), None)
         if handler:
             event = events.CTCPEvent(prefix, command, args, tags)
-            handler(event)
+
+            def delegate(event):
+                handler(event)
+
+            self.loop.call_soon(delegate, event)
 
 
 
@@ -245,9 +254,9 @@ class IRCClient:
     def on_ctcp_action(self, prefix, args):     pass
     def on_connect(self, *args):                pass
     def on_disconnect(self):                    pass
-    def on_error(self, prefix, params):         pass
-    def on_notice(self, prefix, params):        pass
-    def on_privmsg(self, prefix, args):         pass
+    def on_error(self, event):                  pass
+    def on_notice(self, event):                 pass
+    def on_privmsg(self, event):                pass
 
 
 
