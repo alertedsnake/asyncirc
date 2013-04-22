@@ -176,6 +176,7 @@ class Event:
         self.args       = args
         self.tags       = tags
         self.message    = ''
+        self.target     = ''
 
         # split up prefix
         self.source, self.user, self.host = protocol.parse_prefix(prefix)
@@ -186,10 +187,10 @@ class Event:
             if command not in protocol.commands_without_target:
                 self.target = args.pop(0)
             else:
-                self.target = None
+                self.target = ''
 
         else:
-            self.target = None
+            self.target = ''
 
     @property
     def hostmask(self):
