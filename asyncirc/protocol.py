@@ -1,5 +1,5 @@
 """
-Aerdan's IRC message parser.
+IRC message parser by Aerdan, used with permission.
 parse_prefix() added by me.
 
 """

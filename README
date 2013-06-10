@@ -1,0 +1,4 @@
+An IRC library using the new async IO libraries for Python 3.3 (aka "tulip").
+
+Works, but not very thoroughly tested yet.  Thanks to Aerdan for the message
+parser.
