@@ -1,7 +1,8 @@
 """IRC Client library using Asynchronous I/O via the py3k 'tulip' library"""
 
-__author__ = 'Michael Stella <asyncirc@thismetalsky.org>'
-__version__ = 'tulip-0.1'
+__author__    = 'Michael Stella <asyncirc@thismetalsky.org>'
+__version__   = 'tulip-0.1'
+__copyright__ = 'Copyright 2013 Michael Stella'
 
 __all__ = ['IRCClient', 'IRCError', 'NotConnected']
 
@@ -117,7 +118,7 @@ class IRCClient:
 
     def data_received(self, data):
         """Process messages from the server"""
-        self.buffer.feed(data.decode())
+        self.buffer.push(data.decode())
         for line in self.buffer:
             if line:
                 self._handle_line(line)

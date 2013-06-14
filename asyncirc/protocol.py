@@ -3,7 +3,9 @@ IRC message parser by Aerdan, used with permission.
 parse_prefix() added by me.
 
 """
-__author__ = ['Kiyoshi Aman', 'Michael Stella']
+__author__    = ['Kiyoshi Aman', 'Michael Stella']
+__version__   = 'tulip-0.1'
+__copyright__ = 'Copyright 2013 Michael Stella, Kiyoshi Aman'
 
 commands_without_target = ['quit','ping','squit','error']
 

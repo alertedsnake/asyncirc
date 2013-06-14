@@ -1,5 +1,9 @@
 """IRC Events and numeric->name conversions"""
 
+__author__    = 'Michael Stella <asyncirc@thismetalsky.org>'
+__version__   = 'tulip-0.1'
+__copyright__ = 'Copyright 2013 Michael Stella'
+
 from . import protocol
 
 numeric = {

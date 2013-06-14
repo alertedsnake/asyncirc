@@ -4,23 +4,23 @@ __all__ = ['LineBuffer']
 
 import re
 
-class LineBuffer(object):
-    line_sep_exp = re.compile('\r?\n')
+class LineBuffer:
+    _line_sep = re.compile('\r?\n')
 
     def __init__(self):
-        self.buffer = ''
-
-    def feed(self, data):
-        self.buffer += data
-
-    def lines(self):
-        lines = self.line_sep_exp.split(self.buffer)
-        self.buffer = lines.pop()
-        return iter(lines)
+        self._buffer = ''
 
     def __iter__(self):
         return self.lines()
 
     def __len__(self):
-        return len(self.buffer)
+        return len(self._buffer)
+
+    def push(self, data):
+        self._buffer += data
+
+    def lines(self):
+        lines = self._line_sep.split(self._buffer)
+        self._buffer = lines.pop()
+        return iter(lines)
 
